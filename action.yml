@@ -1,4 +1,4 @@
-name: Vigil
+name: Vigil PR Scanner
 description: Scan a PR diff for malicious capability - shells, exfil, auto-exec hooks. Not a code-quality review.
 branding: {icon: shield, color: red}
 
