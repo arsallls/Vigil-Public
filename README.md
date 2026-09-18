@@ -6,29 +6,7 @@ refactor suggestions, no "consider extracting a helper". One question only:
 > Did this PR gain the ability to run commands, phone home, or read credentials —
 > and does the file it landed in have any business doing that?
 
-## Example output
-
-What Vigil posts on a flagged PR — the real comment, rendered:
-
-> 🔴 **Blocked**
->
-> Capability landed where it has no business being. Treat as hostile until proven otherwise.
->
-> **Capabilities detected:** `credential-access` `egress` `obfuscation`
->
-> **Start with `src/telemetry.py:11`** &mdash; Reads ~/.ssh/id_rsa.
->
-> **Findings**
->
-> <b>src/telemetry.py</b> &nbsp;<sub>3 signal(s), highest critical</sub>
->
-> - ![critical](https://img.shields.io/badge/P0-critical-red?style=flat-square) **Credential store access** &nbsp;<sub>line 11</sub>
-> - ![high](https://img.shields.io/badge/P1-high-orange?style=flat-square) **Decode-to-execute** &nbsp;<sub>line 9</sub>
-> - ![review](https://img.shields.io/badge/P2-review-yellow?style=flat-square) **Paste / tunnel host egress** &nbsp;<sub>line 14</sub>
->
-> <sub>...followed by collapsible sections explaining each finding and an investigation prompt.</sub>
-
-A clean PR gets a green **Clear** comment and a passing `vigil` status check.
+**[See example output ↓](#example-output)** — Vigil flagging a real PR alongside an LLM reviewer.
 
 ## Two ways to run it
 
@@ -159,6 +137,8 @@ then hand the reviewer a map. Three things you get:
 The net: a free, injection-proof floor under a reasoning ceiling. To slip something past
 the pair, an attacker has to beat a pattern matcher **and** an LLM, which are weak to
 opposite tricks.
+
+<a id="example-output"></a>
 
 ![Vigil and Greptile reviewing the same PR](docs/vigil-greptile-gate.png)
 
