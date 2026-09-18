@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Vigil">
+  <rect width="512" height="512" fill="#2F81F7"/>
+  <!-- tip lands at y=478, inside the 512 canvas -->
+  <path d="M256 40 L455 122 V290 C455 408 375 450 256 478 C137 450 57 408 57 290 V122 Z"
+        fill="#0A0C10"/>
+  <g fill="#2F81F7">
+    <rect x="118" y="168" width="276" height="44" rx="22"/>
+    <rect x="162" y="248" width="232" height="44" rx="22"/>
+    <rect x="118" y="328" width="186" height="44" rx="22"/>
+  </g>
+</svg>

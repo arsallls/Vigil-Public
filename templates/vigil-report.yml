@@ -1,0 +1,52 @@
+# .github/workflows/vigil-report.yml
+# PRIVILEGED half. Runs base-branch code only - never checks out or executes the PR.
+# Reads one JSON artifact and posts. This separation is the whole security model.
+#
+# MUST live on your default branch or workflow_run will never fire.
+name: vigil-report
+
+on:
+  workflow_run:
+    workflows: [vigil-scan]
+    types: [completed]
+
+permissions:
+  contents: read          # REQUIRED - omit it and checkout 404s on private repos
+  pull-requests: write    # the sticky comment
+  statuses: write         # the "vigil" check
+  actions: read           # download the artifact
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4    # base branch, trusted
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vigil
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: _dg
+
+      # Optional identity upgrade. Without this the comment posts as
+      # `github-actions[bot]`. With it, as `vigil[bot]` with your own avatar
+      # and a real Bot badge. Register a GitHub App (NO webhook URL needed - it is
+      # an identity, not a service), install it on the repo, then set the secrets.
+      - id: app
+        if: vars.VIGIL_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.VIGIL_APP_ID }}
+          private-key: ${{ secrets.VIGIL_APP_PRIVATE_KEY }}
+
+      - env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          # Gate handoff: empty = disabled. Set repo var GREPTILE_MENTION
+          # to "@greptileai" AND set greptile.json skipReview:AUTOMATIC to
+          # make Greptile run only after Vigil finishes.
+          GREPTILE_MENTION: ${{ vars.GREPTILE_MENTION }}
+          HANDOFF_SKIP_AT: ${{ vars.HANDOFF_SKIP_AT }}
+        run: python3 report.py _dg

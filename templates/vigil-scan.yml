@@ -1,0 +1,38 @@
+# .github/workflows/vigil-scan.yml
+# UNPRIVILEGED half. Touches PR code. No secrets, read-only token, no write access.
+# Emits an artifact; posts nothing. The reporter workflow does the talking.
+name: vigil-scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read          # nothing else. This job sees attacker-authored code.
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: arsallls/Vigil-Public@v1
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          fail-at: "3"
+
+      - name: Record PR identity for the reporter
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          printf '%s' "$PR"  > _dg/pr
+          printf '%s' "$SHA" > _dg/sha
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vigil
+          path: _dg/
+          retention-days: 3

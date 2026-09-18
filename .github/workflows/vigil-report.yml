@@ -1,0 +1,40 @@
+# PRIVILEGED half. Runs base-branch code only - never checks out or executes the PR.
+# Must live on the default branch or workflow_run never fires.
+name: vigil-report
+
+on:
+  workflow_run:
+    workflows: [vigil-scan]
+    types: [completed]
+
+permissions:
+  contents: read          # REQUIRED - omit it and checkout 404s on private repos
+  pull-requests: write    # the sticky comment
+  statuses: write         # the "vigil" check
+  actions: read           # download the artifact
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vigil
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: _dg
+
+      - id: app
+        if: vars.VIGIL_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.VIGIL_APP_ID }}
+          private-key: ${{ secrets.VIGIL_APP_PRIVATE_KEY }}
+
+      - env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: python3 report.py _dg

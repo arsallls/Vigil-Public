@@ -1,0 +1,44 @@
+# vigil scanning its own PRs. UNPRIVILEGED half - read-only token, no secrets.
+#
+# Excludes rules.yaml and the docs: in THIS repo those files carry attack patterns
+# as data - credential paths, reverse-shell shapes - so scanning them flags the tool
+# for being the tool. The tradeoff is real: a payload hidden in README.md is not seen.
+#
+# Note the literals themselves stay out of these comments. vigil cannot tell
+# prose from code, and it is right not to try.
+name: vigil-scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          exclude: "rules.yaml *.md"
+          fail-at: "3"
+
+      - name: Record PR identity for the reporter
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          printf '%s' "$PR"  > _dg/pr
+          printf '%s' "$SHA" > _dg/sha
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vigil
+          path: _dg/
+          retention-days: 3

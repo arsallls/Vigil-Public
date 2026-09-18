@@ -1,0 +1,45 @@
+# Reusable UNPRIVILEGED half. Callers get this with ~8 lines and vendor nothing.
+# Runs in the CALLER's context: checkout gets their repo, the token is theirs.
+name: Vigil scan (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      exclude:
+        description: Space-separated globs to skip, e.g. "vendor/* *.min.js".
+        type: string
+        default: ""
+      fail-at:
+        description: "Severity that flips the verdict: 1 note, 2 review, 3 high, 4 critical."
+        type: string
+        default: "3"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # nothing else. This job sees attacker-authored code.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: arsallls/Vigil-Public@v1
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          exclude: ${{ inputs.exclude }}
+          fail-at: ${{ inputs.fail-at }}
+
+      - name: Record PR identity for the reporter
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          printf '%s' "$PR"  > _dg/pr
+          printf '%s' "$SHA" > _dg/sha
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vigil
+          path: _dg/
+          retention-days: 3

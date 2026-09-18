@@ -1,0 +1,8 @@
+# .github/workflows/vigil-scan.yml  -- copy verbatim, no secrets, no config
+name: vigil-scan
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  scan:
+    uses: arsallls/Vigil-Public/.github/workflows/reusable-scan.yml@v1

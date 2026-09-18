@@ -1,0 +1,59 @@
+name: Vigil
+description: Scan a PR diff for malicious capability - shells, exfil, auto-exec hooks. Not a code-quality review.
+branding: {icon: shield, color: red}
+
+inputs:
+  base:
+    description: Base SHA or ref to diff against.
+    required: true
+  head:
+    description: Head ref.
+    default: HEAD
+  fail-at:
+    description: "Severity that flips the verdict to flagged: 1 note, 2 review, 3 high, 4 critical."
+    default: "3"
+  extra-rules:
+    description: Path to an additional semgrep rules file in the consuming repo.
+    default: ""
+  exclude:
+    description: Space-separated globs to skip, e.g. "vendor/* *.min.js".
+    default: ""
+
+outputs:
+  verdict:
+    description: clean | flagged
+    value: ${{ steps.scan.outputs.verdict }}
+  max-sev:
+    description: Highest severity found, 0-4.
+    value: ${{ steps.scan.outputs.max-sev }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: pipx install semgrep
+
+    - id: scan
+      shell: bash
+      env:
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+        FAIL_AT: ${{ inputs.fail-at }}
+        EXCLUDE: ${{ inputs.exclude }}
+        AP: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        mkdir -p _dg
+        EX=""
+        for g in $EXCLUDE; do EX="$EX --exclude $g"; done
+        python3 "$AP/scan.py" \
+          --base "$BASE" --head "$HEAD" \
+          --rules "$AP/rules.yaml" \
+          --fail-at "$FAIL_AT" $EX \
+          --json _dg/findings.json | tee -a "$GITHUB_STEP_SUMMARY" || true
+        python3 - <<'PY' >> "$GITHUB_OUTPUT"
+        import json
+        r = json.load(open("_dg/findings.json"))
+        print(f"verdict={r['verdict']}")
+        print(f"max-sev={r['max_sev']}")
+        PY

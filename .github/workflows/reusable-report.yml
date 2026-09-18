@@ -1,0 +1,53 @@
+# Reusable PRIVILEGED half. Never checks out the caller's repo at all - it checks
+# out THIS repo for the reporter code, then reads one JSON artifact. So a caller
+# vendors nothing, and the posting step runs tool code the PR cannot influence.
+name: Vigil report (reusable)
+
+on:
+  workflow_call:
+    secrets:
+      VIGIL_APP_ID:
+        required: false
+      VIGIL_APP_PRIVATE_KEY:
+        required: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    permissions:
+      pull-requests: write    # the sticky comment
+      statuses: write         # the "vigil" check
+      actions: read           # download the artifact
+    steps:
+      # the TOOL's code, not the caller's - pinned, and not the repo under review
+      - uses: actions/checkout@v4
+        with:
+          repository: arsallls/Vigil-Public
+          ref: v1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vigil
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: _dg
+
+      # Entirely optional. Without it the comment posts as github-actions[bot],
+      # which needs no secrets and no setup at all.
+      - id: app
+        if: vars.VIGIL_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.VIGIL_APP_ID }}
+          private-key: ${{ secrets.VIGIL_APP_PRIVATE_KEY }}
+
+      - env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          # Gate handoff: empty = disabled. Set repo var GREPTILE_MENTION
+          # to "@greptileai" AND set greptile.json skipReview:AUTOMATIC to
+          # make Greptile run only after Vigil finishes.
+          GREPTILE_MENTION: ${{ vars.GREPTILE_MENTION }}
+          HANDOFF_SKIP_AT: ${{ vars.HANDOFF_SKIP_AT }}
+        run: python3 report.py _dg

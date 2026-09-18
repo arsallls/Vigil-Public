@@ -1,0 +1,4 @@
+_dg/
+__pycache__/
+*.pyc
+.semgrep/

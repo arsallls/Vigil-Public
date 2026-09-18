@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Vigil">
+  <circle cx="256" cy="256" r="256" fill="#000000"/>
+  <g transform="translate(256 256) scale(0.72) translate(-256 -256)">
+    <path d="M256 60 L424 128 v132 c0 102-68 170-168 212C156 430 88 362 88 260V128Z" fill="#3FB950"/>
+    <g fill="#000000">
+      <rect x="152" y="176" width="208" height="34" rx="17"/>
+      <rect x="186" y="239" width="174" height="34" rx="17"/>
+      <rect x="152" y="302" width="140" height="34" rx="17"/>
+    </g>
+  </g>
+</svg>

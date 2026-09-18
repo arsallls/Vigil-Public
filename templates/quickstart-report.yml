@@ -1,0 +1,10 @@
+# .github/workflows/vigil-report.yml  -- must be on your DEFAULT branch
+name: vigil-report
+on:
+  workflow_run:
+    workflows: [vigil-scan]
+    types: [completed]
+jobs:
+  report:
+    uses: arsallls/Vigil-Public/.github/workflows/reusable-report.yml@v1
+    secrets: inherit    # only matters if you later add the optional bot identity

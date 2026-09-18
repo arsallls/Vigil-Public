@@ -1,0 +1,19 @@
+services:
+  vigil:
+    build: .
+    restart: unless-stopped
+    # Loopback only. Put a tunnel or reverse proxy in front - never expose this directly.
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      VIGIL_APP_ID: ${VIGIL_APP_ID:?set in .env}
+      VIGIL_WEBHOOK_SECRET: ${VIGIL_WEBHOOK_SECRET:?set in .env}
+      VIGIL_PRIVATE_KEY_PATH: /run/secrets/vigil.pem
+    volumes:
+      - ./vigil.private-key.pem:/run/secrets/vigil.pem:ro
+    tmpfs:
+      - /tmp:size=2g,mode=1777      # clones land here and vanish on restart
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 2g
+    pids_limit: 512

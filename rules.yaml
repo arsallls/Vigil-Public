@@ -1,0 +1,208 @@
+# vigil rules: capability detection only. No style, no quality, no "consider refactoring".
+# Every rule answers "what can this PR now DO that it could not before?"
+rules:
+
+# --- 1. code that runs when you merely open or install the repo -----------------
+  - id: npm-install-hook
+    languages: [generic]
+    paths: {include: ["package.json"]}
+    pattern-regex: '"(pre|post)?install"\s*:'
+    message: "npm lifecycle hook - runs on `npm install`, before you read any code."
+    severity: ERROR
+
+  - id: vscode-autorun-task
+    languages: [generic]
+    paths: {include: [".vscode/tasks.json", ".vscode/*.json", "**/*.code-workspace"]}
+    pattern-regex: '"runOn"\s*:\s*"folderOpen"'
+    message: "VS Code task set to run on folderOpen - executes when the repo is opened."
+    severity: ERROR
+
+  - id: devcontainer-lifecycle-command
+    languages: [generic]
+    paths: {include: ["**/devcontainer.json"]}
+    pattern-regex: '"(initializeCommand|onCreateCommand|updateContentCommand|postCreateCommand|postStartCommand|postAttachCommand)"'
+    message: "Devcontainer lifecycle command - runs on container create/attach."
+    severity: ERROR
+
+  - id: python-install-hook
+    languages: [python]
+    paths: {include: ["setup.py"]}
+    pattern-either:
+      - pattern: cmdclass=$X
+      - pattern: |
+          class $C(install):
+            ...
+      - pattern: |
+          class $C(develop):
+            ...
+    message: "setup.py install-time hook - runs on `pip install`."
+    severity: ERROR
+
+# --- 2. CI tampering (a PR that edits the thing that grades PRs) ----------------
+  - id: workflow-pull-request-target
+    languages: [generic]
+    paths: {include: [".github/workflows/*"]}
+    pattern-regex: 'pull_request_target'
+    message: "pull_request_target runs fork code with repo secrets and a write token."
+    severity: ERROR
+
+  - id: workflow-expression-injection
+    languages: [generic]
+    paths: {include: [".github/workflows/*"]}
+    # Only the attacker-AUTHORED leaves. github.event.pull_request.base.sha and
+    # .number are attacker-supplied but not attacker-written - flagging them is noise.
+    pattern-regex: '\$\{\{[^}]*github\.(head_ref|event\.[\w.]*(title|body|label|ref|name|email|login|description))[^}]*\}\}'
+    message: "Attacker-authored GitHub expression interpolated into a workflow."
+    severity: ERROR
+
+  - id: curl-pipe-shell
+    languages: [generic]
+    pattern-regex: '(curl|wget)[^\n|]{0,200}\|\s*(sudo\s+)?(ba|z|d)?sh'
+    message: "Remote script piped straight into a shell - content can change after review."
+    severity: ERROR
+
+  - id: workflow-secret-sweep
+    languages: [generic]
+    paths: {include: [".github/workflows/*"]}
+    pattern-regex: 'toJSON\(\s*secrets\s*\)'
+    message: "Entire secrets context serialized - classic CI exfiltration."
+    severity: ERROR
+
+# --- 3. dynamic execution -------------------------------------------------------
+  - id: js-dynamic-exec
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: require("child_process")
+      - pattern: require('child_process')
+      - pattern: import $X from "child_process"
+    message: "Dynamic code execution or process spawning newly introduced."
+    severity: WARNING
+
+  - id: py-dynamic-exec
+    languages: [python]
+    pattern-either:
+      - pattern: exec(...)
+      - pattern: eval(...)
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern: pickle.loads(...)
+      - pattern: ctypes.$F(...)
+    message: "Dynamic code execution, shell invocation, or unsafe deserialization."
+    severity: WARNING
+
+# --- 4. decode-then-execute (the shape of every real payload) -------------------
+  - id: js-decode-to-exec
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: eval(atob(...))
+      - pattern: eval(Buffer.from(...).toString(...))
+      - pattern: new Function(atob(...))
+      - pattern: $F(Buffer.from($X, "base64").toString(...))
+    message: "Decoded data flowing into an executor - obfuscated payload shape."
+    severity: ERROR
+
+  - id: py-decode-to-exec
+    languages: [python]
+    pattern-either:
+      - pattern: exec(base64.$D(...))
+      - pattern: eval(base64.$D(...))
+      - pattern: exec($F(base64.$D(...)))
+      - pattern: exec(codecs.decode(...))
+      - pattern: exec(zlib.decompress(...))
+      - pattern: exec(bytes.fromhex(...))
+      - pattern: eval(bytes.fromhex(...))
+      - pattern: exec(bytearray.fromhex(...))
+      - pattern: exec("".join(...))
+      - pattern: eval("".join(...))
+      - pattern: exec($F(...).decode(...))
+    message: "Decoded/assembled data flowing into exec/eval - obfuscated payload shape."
+    severity: ERROR
+
+  # --- 9. obfuscation machinery: rarely benign, hides WHICH api is called --------
+  - id: py-dynamic-resolution
+    languages: [python]
+    pattern-either:
+      - pattern: __import__(...)
+      - pattern: getattr($M, $DEC(...))
+      - pattern: globals()[$K]()
+      - pattern: importlib.import_module($X)
+    message: "Dynamic import / attribute resolution - can conceal which API is invoked."
+    severity: WARNING
+
+  - id: encoded-decode-call
+    languages: [python]
+    pattern-either:
+      - pattern: codecs.decode(..., "rot13")
+      - pattern: codecs.decode(..., "rot_13")
+      - pattern: codecs.decode(..., "hex")
+      - pattern: bytes.fromhex(...)
+      - pattern: bytearray.fromhex(...)
+    message: "Encoded-string decode (hex/rot13) - a common obfuscation primitive."
+    severity: INFO
+
+# --- 5. credential and environment harvesting -----------------------------------
+  - id: credential-store-access
+    languages: [generic]
+    # Match distinctive basenames as tokens, not slash-joined literals, so a path
+    # assembled piecewise - Path.home()/".ssh"/"id_rsa", os.path.join(...) - is
+    # caught the same as "~/.ssh/id_rsa". A fixed literal misses the pieces.
+    pattern-regex: '(id_rsa|id_dsa|id_ecdsa|id_ed25519|authorized_keys|aws/credentials|\.npmrc|\.pypirc|\.docker/config\.json|\.git-credentials|\.config/gh/hosts|login\.keychain|Local\s+State|wallet\.dat|key3\.db|logins\.json|["''/.]ssh["''/])'
+    message: "Reference to a credential store path - wallet, keychain, token, or SSH key."
+    severity: ERROR
+
+  # --- 8. secrets committed in the diff (CISA: secret detection in CI) ----------
+  - id: hardcoded-secret
+    languages: [generic]
+    # High-precision prefixes only - these do not occur by accident.
+    pattern-regex: '(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|gh[pousr]_[0-9A-Za-z]{36,}|xox[baprs]-[0-9A-Za-z-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})'
+    message: "Hardcoded secret added in the diff - private key, cloud key, or token."
+    severity: ERROR
+
+  - id: js-env-harvest
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: JSON.stringify(process.env)
+      - pattern: Object.entries(process.env)
+      - pattern: Object.keys(process.env)
+      - pattern: '{...process.env}'
+    message: "Whole environment serialized - secrets live there."
+    severity: ERROR
+
+  - id: py-env-harvest
+    languages: [python]
+    pattern-either:
+      - pattern: dict(os.environ)
+      - pattern: os.environ.copy()
+      - pattern: json.dumps(os.environ)
+    message: "Whole environment serialized - secrets live there."
+    severity: ERROR
+
+# --- 6. egress to somewhere nobody chose -----------------------------------------
+  - id: hardcoded-ip-egress
+    languages: [generic]
+    pattern-regex: 'https?://(\d{1,3}\.){3}\d{1,3}(:\d+)?'
+    message: "Hardcoded IP endpoint - legitimate deps use hostnames."
+    severity: ERROR
+
+  - id: suspicious-egress-host
+    languages: [generic]
+    pattern-regex: 'https?://[\w.-]+\.(tk|top|xyz|ru|cc|gq|ml|cf|icu|su)/|\b(pastebin\.com|paste\.ee|transfer\.sh|file\.io|ngrok\.io|trycloudflare\.com|webhook\.site|requestbin)\b'
+    message: "Egress to a paste/tunnel/throwaway host - exfiltration destination."
+    severity: ERROR
+
+  - id: dependency-from-url
+    languages: [generic]
+    paths: {include: ["package.json", "requirements*.txt", "Gemfile"]}
+    pattern-regex: '(git\+https?://|https?://[^\s"]+\.(tgz|tar\.gz|whl|zip))'
+    message: "Dependency pulled from a URL instead of the registry - bypasses registry scanning."
+    severity: ERROR
+
+# --- 7. reverse shells ------------------------------------------------------------
+  - id: reverse-shell-shape
+    languages: [generic]
+    pattern-regex: '(socket\.socket[^\n]{0,80}connect|/dev/tcp/|nc\s+-[a-z]*e\s|bash\s+-i\s+>&|sh\s+-i\s+>&|SOCK_STREAM[^\n]{0,60}connect)'
+    message: "Reverse shell shape - socket connect wired to a shell."
+    severity: ERROR
