@@ -6,6 +6,30 @@ refactor suggestions, no "consider extracting a helper". One question only:
 > Did this PR gain the ability to run commands, phone home, or read credentials —
 > and does the file it landed in have any business doing that?
 
+## Example output
+
+What Vigil posts on a flagged PR — the real comment, rendered:
+
+> 🔴 **Blocked**
+>
+> Capability landed where it has no business being. Treat as hostile until proven otherwise.
+>
+> **Capabilities detected:** `credential-access` `egress` `obfuscation`
+>
+> **Start with `src/telemetry.py:11`** &mdash; Reads ~/.ssh/id_rsa.
+>
+> **Findings**
+>
+> <b>src/telemetry.py</b> &nbsp;<sub>3 signal(s), highest critical</sub>
+>
+> - ![critical](https://img.shields.io/badge/P0-critical-red?style=flat-square) **Credential store access** &nbsp;<sub>line 11</sub>
+> - ![high](https://img.shields.io/badge/P1-high-orange?style=flat-square) **Decode-to-execute** &nbsp;<sub>line 9</sub>
+> - ![review](https://img.shields.io/badge/P2-review-yellow?style=flat-square) **Paste / tunnel host egress** &nbsp;<sub>line 14</sub>
+>
+> <sub>...followed by collapsible sections explaining each finding and an investigation prompt.</sub>
+
+A clean PR gets a green **Clear** comment and a passing `vigil` status check.
+
 ## Two ways to run it
 
 - **GitHub Action** — two workflow files, zero infrastructure. Start here.
@@ -94,32 +118,6 @@ controls close that, all free:
 Without #1 this is advisory only. With it, the three failure modes — clean, flagged,
 and scanner-neutered — all end in a merge block except clean.
 
-## Bot identity (optional, cosmetic)
-
-Skip this. It changes the comment's author from `github-actions[bot]` to your own
-name and avatar, and changes nothing else. Every secret vigil mentions exists
-only for this.
-
-If you want it anyway, register a **GitHub App** — with **no webhook URL**. It is an
-identity, not a service; nothing is hosted.
-
-1. github.com/settings/apps/new. Permissions: `pull requests: write`,
-   `commit statuses: write`, `contents: read`. No webhook, no events.
-2. Install it on the repos you want scanned. Generate a private key.
-3. Set repo secrets `VIGIL_APP_ID` and `VIGIL_APP_PRIVATE_KEY`, and repo
-   variable `VIGIL_APP=true`.
-
-The reporter mints an installation token at run time and posts as `vigil[bot]`.
-
-**Per-repo cost:** the App private key lives in each consuming repo's secrets. For
-more than a couple of repos, put it in **organisation** secrets scoped to all repos
-and set the `VIGIL_APP` org variable — then per-repo setup returns to zero.
-Personal accounts have no org-level secrets; a free org is the workaround.
-
-**Distribution limit:** you cannot hand third parties your App's private key. A bot
-identity across repos you do not own needs a hosted App holding the key centrally —
-the one part of this design that requires a server. The scanner itself never does.
-
 ## What it detects
 
 | family | examples |
@@ -161,6 +159,18 @@ then hand the reviewer a map. Three things you get:
 The net: a free, injection-proof floor under a reasoning ceiling. To slip something past
 the pair, an attacker has to beat a pattern matcher **and** an LLM, which are weak to
 opposite tricks.
+
+![Vigil and Greptile reviewing the same PR](docs/vigil-greptile-gate.png)
+
+<sub>*The same PR, two ways of seeing it. Vigil flags five capability signals —
+credential access, decode-to-exec, egress — and blocks, then hands Greptile the focus
+areas. Greptile reasons the fixture is inert (no reachable execution path) and rates it
+5/5. Both are right about this **test** fixture — the point is that "it's unreachable /
+it's just a test" is exactly the story a real attacker uses to earn a pass, and
+reachability can flip with one later commit. Vigil surfaces the capability
+deterministically either way, so the call always reaches a human instead of resting on a
+single judgment. (The branded `vigil-pr` bot is the optional App-token setup; by default
+the comment posts as `github-actions[bot]`.)*</sub>
 
 ### Turn on the gate
 
@@ -225,6 +235,12 @@ code quality. The Action stays free and maintained regardless; the App would jus
 
 Whether that gets built depends on whether people actually use and want it. If Vigil is
 useful to you, a star or an issue describing your use case is the signal that decides it.
+
+## Contributing
+
+Vigil is open source. New detections, false-positive fixes, and especially **bypass
+reports** are welcome — a diff that sneaks malicious capability past Vigil is the most
+useful thing you can send. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Not a replacement for
 

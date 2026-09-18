@@ -31,7 +31,7 @@ runs:
   using: composite
   steps:
     - shell: bash
-      run: pipx install semgrep
+      run: pipx install semgrep==1.177.0
 
     - id: scan
       shell: bash

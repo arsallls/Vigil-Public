@@ -1,0 +1,21 @@
+# Proves Vigil still works on every PR to this repo. For a security tool, a scanner
+# that silently stopped detecting is the worst failure - these assertions catch it.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install semgrep==1.177.0
+      - run: python3 scan.py --selftest
+      - run: python3 report.py --selftest
+      - run: python3 test_coverage.py
