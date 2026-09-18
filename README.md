@@ -136,6 +136,61 @@ Severity is **capability × path class**. The same `postinstall` scores higher i
 PR titled "fix README typo" than in one touching build config, because capability
 showing up where it has no business is the actual attack shape.
 
+## Using Vigil with Greptile, CodeRabbit & other AI reviewers
+
+Vigil is built to run **alongside** an LLM reviewer, not instead of one — they fail on
+opposite things. Vigil is deterministic and injection-proof but pattern-bound; an LLM
+reasons about intent but can be talked out of a finding, or fed a prompt injection that
+steers its verdict. An attacker has to beat both.
+
+### Why the gate is worth turning on
+
+By default Greptile and CodeRabbit fire the moment a PR opens — blind, with no idea where
+to look, and with nothing standing in front of them. The gate makes Vigil go **first**,
+then hand the reviewer a map. Three things you get:
+
+- **Order that can't be gamed.** A deterministic screen sees the diff before any LLM does.
+  Obfuscated, "unreachable", or injection-laced code that can talk an LLM into a pass still
+  trips Vigil — and Vigil runs before the LLM ever forms an opinion.
+- **A focused, cheaper review.** Vigil posts the exact files and lines that gained
+  execution, credential, or egress capability. The LLM spends its reasoning on those
+  instead of re-reading the whole diff cold. Better signal, less token spend.
+- **One review, not two.** The reviewer runs once — after the pre-screen, in the right
+  order — instead of auto-firing on open and again later.
+
+The net: a free, injection-proof floor under a reasoning ceiling. To slip something past
+the pair, an attacker has to beat a pattern matcher **and** an LLM, which are weak to
+opposite tricks.
+
+### Turn on the gate
+
+Vigil already does its half automatically — once a reviewer is set to wait, Vigil detects
+that from your default branch and `@mention`s it with the focus areas after each scan. The
+only step is the half Vigil can't do for you: tell the reviewer to stop auto-firing.
+
+**Greptile** — add `greptile.json` to your repo root:
+
+```json
+{ "skipReview": "AUTOMATIC" }
+```
+
+**CodeRabbit** — add (or edit) `.coderabbit.yaml`:
+
+```yaml
+reviews:
+  auto_review:
+    enabled: false
+```
+
+Commit it to your default branch. That's it — next PR, Vigil scans, then triggers the
+reviewer once with context. No such config → Vigil just posts its findings and the
+reviewer keeps running as normal, so there's no downside to leaving Vigil on everywhere.
+
+**Force or disable it explicitly** with the repo variable `VIGIL_GATE`
+(Settings → Secrets and variables → Actions → Variables): set it to `@greptileai`,
+`@coderabbitai`, or both space-separated to trigger a reviewer even if auto-detect can't
+read its config; set it to `off` to disable the handoff entirely.
+
 ## Local use
 
 ```bash
@@ -174,4 +229,4 @@ useful to you, a star or an issue describing your use case is the signal that de
 ## Not a replacement for
 
 [Socket](https://socket.dev) (dependency supply chain), [zizmor](https://github.com/woodruffw/zizmor)
-(deep GitHub Actions auditing), Dependabot, or human review. Compose, don't replace.
+(deep GitHub Actions auditing), Dependabot, or human review. Compose, don't replace — see [Using Vigil with AI reviewers](#using-vigil-with-greptile-coderabbit--other-ai-reviewers).

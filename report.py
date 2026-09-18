@@ -5,7 +5,7 @@ Runs from the base branch via workflow_run. Never executes PR code; it only read
 the JSON the unprivileged scan produced. Posts one sticky comment and one commit
 status. Stdlib only - a security tool should not pull a dependency tree to POST.
 """
-import argparse, json, os, sys, urllib.error, urllib.request
+import argparse, json, os, re, sys, urllib.error, urllib.request
 
 API = "https://api.github.com"
 MARK = "<!-- vigil:sticky"
@@ -220,6 +220,41 @@ def upsert_comment(repo, pr, render, token):
     return "created", new["id"], scans
 
 
+GATE_PARTNERS = [("greptile.json", "@greptileai"),
+                 (".coderabbit.yaml", "@coderabbitai"),
+                 (".coderabbit.yml", "@coderabbitai")]
+
+
+def _gate_waits(path, raw):
+    """True if this partner config disables auto-review, so Vigil should trigger it
+    after its pre-screen (otherwise mentioning it would double-run the reviewer).
+    ponytail: greptile.json is real JSON; coderabbit yaml checked by a bounded regex
+    (no yaml in stdlib) - swap in a parser if the heuristic ever misfires."""
+    if path.endswith(".json"):
+        try:
+            return str(json.loads(raw).get("skipReview", "")).upper() == "AUTOMATIC"
+        except (json.JSONDecodeError, AttributeError):
+            return False
+    return (re.search(r"auto_review:[\s\S]{0,120}?enabled:\s*false", raw, re.I) is not None
+            or re.search(r"disable_auto_review:\s*true", raw, re.I) is not None)
+
+
+def detect_gate(repo, token):
+    """Partner reviewers this repo has configured to wait for Vigil -> their @mentions.
+    Reads the default branch via the contents API, so a PR cannot inject a trigger."""
+    import base64
+    out = []
+    for path, mention in GATE_PARTNERS:
+        try:
+            r = api("GET", f"/repos/{repo}/contents/{path}", token=token)
+        except urllib.error.HTTPError:
+            continue
+        raw = base64.b64decode(r.get("content", "") or "").decode("utf-8", "replace")
+        if _gate_waits(path, raw) and mention not in out:
+            out.append(mention)
+    return out
+
+
 def post_handoff(repo, pr, body, token):
     """One handoff comment: delete any prior one so the fresh @mention re-triggers
     the reviewer (edits don't re-fire mentions)."""
@@ -336,6 +371,12 @@ def selftest():
     assert MARKRX.search("<!-- vigil:sticky -->").group(1) is None
     r0 = {"findings": [{"rule": "py-decode-to-exec", "path": "a.py", "line": 5}],
           "count": 1, "max_sev": 3}
+    assert _gate_waits("greptile.json", '{"skipReview":"AUTOMATIC"}')
+    assert not _gate_waits("greptile.json", '{"skipReview":"OFF"}')
+    assert not _gate_waits("greptile.json", "not json at all")
+    assert _gate_waits(".coderabbit.yaml", "reviews:\n  auto_review:\n    enabled: false\n")
+    assert not _gate_waits(".coderabbit.yaml", "reviews:\n  auto_review:\n    enabled: true\n")
+    assert _gate_waits(".coderabbit.yml", "disable_auto_review: true")
     b = handoff_body(r0, "@greptileai", False)
     assert "@greptileai" in b and "py-decode-to-exec` at a.py:5" in b and HANDOFF_MARK in b
     bs = handoff_body({"findings": [], "count": 9, "max_sev": 4}, "@greptileai", True)
@@ -390,8 +431,17 @@ def main():
         action, cid, scans = upsert_comment(repo, pr, render, token)
         set_status(repo, sha, state, desc, url, token)
         print(f"comment {action} (id {cid}, scan #{scans}); status {state}: {desc}")
-        mention = os.environ.get("GREPTILE_MENTION", "").strip()
-        if mention:
+        # Gate is ON by default: auto-detect any partner reviewer this repo has set
+        # to wait for Vigil. VIGIL_GATE forces specific @mentions; "off" disables.
+        override = os.environ.get("VIGIL_GATE", os.environ.get("GREPTILE_MENTION", "")).strip()
+        if override.lower() in ("off", "none", "false", "0"):
+            mentions = []
+        elif override:
+            mentions = override.split()
+        else:
+            mentions = detect_gate(repo, token)
+        if mentions:
+            mention = " ".join(mentions)
             skip_at = int(os.environ.get("HANDOFF_SKIP_AT", "0") or "0")
             skipped = skip_at and res["max_sev"] >= skip_at
             post_handoff(repo, pr, handoff_body(res, mention, bool(skipped)), token)

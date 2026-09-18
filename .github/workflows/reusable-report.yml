@@ -19,6 +19,7 @@ jobs:
       pull-requests: write    # the sticky comment
       statuses: write         # the "vigil" check
       actions: read           # download the artifact
+      contents: read          # read the partner gate config (greptile.json / .coderabbit.yaml)
     steps:
       # the TOOL's code, not the caller's - pinned, and not the repo under review
       - uses: actions/checkout@v4
@@ -45,9 +46,11 @@ jobs:
       - env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
-          # Gate handoff: empty = disabled. Set repo var GREPTILE_MENTION
-          # to "@greptileai" AND set greptile.json skipReview:AUTOMATIC to
-          # make Greptile run only after Vigil finishes.
+          # Gate is ON by default: Vigil auto-triggers any reviewer this repo has
+          # set to wait for it (greptile.json skipReview:AUTOMATIC, or CodeRabbit
+          # auto_review disabled). Override with repo var VIGIL_GATE ("@greptileai
+          # @coderabbitai" to force, "off" to disable). GREPTILE_MENTION still works.
+          VIGIL_GATE: ${{ vars.VIGIL_GATE }}
           GREPTILE_MENTION: ${{ vars.GREPTILE_MENTION }}
           HANDOFF_SKIP_AT: ${{ vars.HANDOFF_SKIP_AT }}
         run: python3 report.py _dg
